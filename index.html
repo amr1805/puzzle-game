@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Puzzle Game - 2 Player</title>
+  </head>
+<body>
+  <img id="logo" src="logo.png" alt="Game Logo">
+  <div id="infoDisplay">
+     </div>
+  <canvas id="puzzleCanvas"></canvas>
+  <div id="pieces">
+     </div>
+
+  <audio id="winSound" src="wooow.mp3" preload="auto"></audio>
+
+  <script>
+    // --- Configuration ---
+    const RENDER_CANVAS = true; // Set to false if you only want HTML elements
+    const ROWS = 3;
+    const COLS = 3;
+    const PIECE_SIZE = 100; // Size of each puzzle piece image and grid cell
+    const CANVAS_WIDTH = COLS * PIECE_SIZE;
+    const CANVAS_HEIGHT = ROWS * PIECE_SIZE;
+
+    // --- Game State ---
+    const GameStates = {
+        START: 'START',
+        PLAYING: 'PLAYING',
+        GAME_OVER: 'GAME_OVER'
+    };
+    let gameState = GameStates.START;
+    let currentPlayer = 1;
+    let player1Score = 0; // Score can represent completed puzzles or turns, here just tracks winner
+    let player2Score = 0;
+    let winner = null;
+
+    // --- DOM Elements ---
+    const canvas = document.getElementById('puzzleCanvas');
+    const ctx = canvas.getContext('2d');
+    const infoDisplay = document.getElementById('infoDisplay');
+    const piecesDiv = document.getElementById('pieces');
+    const winSound = document.getElementById('winSound');
+    const logo = document.getElementById('logo');
+
+    // --- Game Variables ---
+    const grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    let availablePieces = []; // To store image elements for selection
+    let selectedPieceInfo = null; // { index: number, src: string, element: HTMLImageElement }
+
+
+    // --- Styling via JavaScript ---
+    function applyStyles() {
+        document.body.style.margin = '0';
+        document.body.style.padding = '0';
+        document.body.style.fontFamily = 'Arial, sans-serif';
+        document.body.style.display = 'flex';
+        document.body.style.flexDirection = 'column';
+        document.body.style.alignItems = 'center';
+        document.body.style.justifyContent = 'flex-start';
+        document.body.style.backgroundColor = '#f0f0f0'; // Example background
+
+        logo.style.height = '150px'; // Adjusted logo size
+        logo.style.margin = '10px 0';
+
+        infoDisplay.style.margin = '5px 0';
+        infoDisplay.style.fontSize = '20px';
+        infoDisplay.style.color = 'purple';
+        infoDisplay.style.textAlign = 'center';
+        infoDisplay.style.minHeight = '50px'; // Ensure space for text
+
+        if (RENDER_CANVAS) {
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            canvas.style.border = '2px solid purple';
+            canvas.style.backgroundColor = '#fff8b3';
+            canvas.style.margin = '10px 0';
+        } else {
+             canvas.style.display = 'none'; // Hide canvas if not rendering
+        }
+
+
+        piecesDiv.style.display = 'flex';
+        piecesDiv.style.justifyContent = 'center';
+        piecesDiv.style.gap = '10px';
+        piecesDiv.style.flexWrap = 'wrap';
+        piecesDiv.style.padding = '10px';
+        piecesDiv.style.maxWidth = `${CANVAS_WIDTH + 40}px`; // Limit width
+        piecesDiv.style.minHeight = '110px'; // Ensure space even if empty
+    }
+
+    // --- Canvas Drawing Functions ---
+    function drawGridLines() {
+         if (!RENDER_CANVAS) return;
+        ctx.strokeStyle = '#ccc'; // Lighter grid lines
+        ctx.lineWidth = 1;
+
+        for (let i = 0; i <= COLS; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * PIECE_SIZE, 0);
+            ctx.lineTo(i * PIECE_SIZE, CANVAS_HEIGHT);
+            ctx.stroke();
+        }
+        for (let j = 0; j <= ROWS; j++) {
+            ctx.beginPath();
+            ctx.moveTo(0, j * PIECE_SIZE);
+            ctx.lineTo(CANVAS_WIDTH, j * PIECE_SIZE);
+            ctx.stroke();
+        }
+    }
+
+    function drawPlacedPieces() {
+         if (!RENDER_CANVAS) return;
+        for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS; col++) {
+                const piece = grid[row][col];
+                if (piece && piece.img) {
+                    // Ensure image is loaded before drawing
+                    if (piece.img.complete && piece.img.naturalHeight !== 0) {
+                         ctx.drawImage(piece.img, col * PIECE_SIZE, row * PIECE_SIZE, PIECE_SIZE, PIECE_SIZE);
+                    } else {
+                         // Optionally draw a placeholder if image not ready
+                         ctx.fillStyle = '#eee';
+                         ctx.fillRect(col * PIECE_SIZE, row * PIECE_SIZE, PIECE_SIZE, PIECE_SIZE);
+                    }
+                }
+            }
+        }
+    }
+
+     function drawGame() {
+        if (!RENDER_CANVAS) return;
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        drawGridLines();
+        drawPlacedPieces();
+    }
+
+    function drawStartScreen() {
+         if (!RENDER_CANVAS) { // If not using canvas, show start text in infoDisplay
+            infoDisplay.innerHTML = `
+                <h2>Welcome to Puzzle Game!</h2>
+                <button id="startButton">Start Game</button>
+            `;
+            document.getElementById('startButton').onclick = startGame;
+            canvas.style.display = 'none';
+            piecesDiv.style.display = 'none';
+            return;
+         }
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.fillStyle = '#fff8b3'; // Background
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = 'purple';
+        ctx.font = '30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Puzzle Game!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3);
+
+        // Simple "Button" Area
+        const buttonX = CANVAS_WIDTH / 2 - 75;
+        const buttonY = CANVAS_HEIGHT / 2;
+        const buttonW = 150;
+        const buttonH = 50;
+        ctx.fillStyle = '#4CAF50'; // Green button
+        ctx.fillRect(buttonX, buttonY, buttonW, buttonH);
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText('Start Game', CANVAS_WIDTH / 2, buttonY + 33);
+
+        piecesDiv.style.display = 'none'; // Hide pieces div
+        updateInfoDisplay(); // Show initial scores
+    }
+
+    function drawGameOverScreen() {
+         if (!RENDER_CANVAS) { // If not using canvas, show game over text
+             infoDisplay.innerHTML = `
+                <h2>Game Over!</h2>
+                <p>Player ${winner} Wins!</p>
+                <p>Scores: Player 1: ${player1Score} | Player 2: ${player2Score}</p>
+                <button id="playAgainButton">Play Again?</button>
+            `;
+             document.getElementById('playAgainButton').onclick = resetGame;
+             canvas.style.display = 'none';
+            piecesDiv.style.display = 'none';
+            return;
+         }
+
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.fillStyle = '#fff8b3'; // Background
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = 'purple';
+        ctx.font = '30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Over!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3);
+        ctx.font = '24px Arial';
+        ctx.fillText(`Player ${winner} Wins! 🎉`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3 + 40);
+
+        // Simple "Play Again" Button Area
+        const buttonX = CANVAS_WIDTH / 2 - 80;
+        const buttonY = CANVAS_HEIGHT / 2 + 30;
+        const buttonW = 160;
+        const buttonH = 50;
+        ctx.fillStyle = '#007bff'; // Blue button
+        ctx.fillRect(buttonX, buttonY, buttonW, buttonH);
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText('Play Again?', CANVAS_WIDTH / 2, buttonY + 33);
+
+        piecesDiv.style.display = 'none'; // Hide pieces div
+        updateInfoDisplay(); // Show final scores
+    }
+
+    // --- Game Logic ---
+     function updateInfoDisplay() {
+        if (gameState === GameStates.START) {
+             infoDisplay.innerHTML = `Player 1: ${player1Score} | Player 2: ${player2Score} <br> Click Start!`;
+         } else if (gameState === GameStates.PLAYING) {
+            infoDisplay.innerHTML = `Player 1: ${player1Score} | Player 2: ${player2Score} <br> Player ${currentPlayer}'s Turn`;
+        } else if (gameState === GameStates.GAME_OVER) {
+            infoDisplay.innerHTML = `Player 1: ${player1Score} | Player 2: ${player2Score} <br> Player ${winner} Wins! Click Play Again.`;
+        }
+    }
+
+
+    function checkWin() {
+        for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS; col++) {
+                const correctIndex = row * COLS + col;
+                const piece = grid[row][col];
+                if (!piece || piece.index !== correctIndex) {
+                    return false; // Not solved yet
+                }
+            }
+        }
+        return true; // All pieces correctly placed
+    }
+
+    function setupPieceImages() {
+        piecesDiv.innerHTML = ''; // Clear previous pieces
+        availablePieces = [];
+        const order = Array.from({ length: ROWS * COLS }, (_, i) => i);
+        order.sort(() => Math.random() - 0.5); // Shuffle piece order
+
+        for (let i = 0; i < order.length; i++) {
+            const index = order[i];
+            const img = document.createElement('img');
+            // *** IMPORTANT: Replace with your actual image path/naming pattern ***
+            img.src = `rapunzel_0${index + 1}.gif`; // Make sure these images exist
+            img.dataset.index = index; // Store the correct final index
+
+            // Style pieces via JS
+            img.style.width = `${PIECE_SIZE}px`;
+            img.style.height = `${PIECE_SIZE}px`;
+            img.style.cursor = 'pointer';
+            img.style.border = '2px solid transparent'; // Default border
+            img.style.transition = 'border 0.2s'; // Smooth selection transition
+
+            img.addEventListener("click", () => {
+                if (gameState !== GameStates.PLAYING) return;
+
+                // Remove selection from others
+                availablePieces.forEach(p => p.element.style.borderColor = 'transparent');
+
+                // Set selected piece info
+                selectedPieceInfo = {
+                    index: index,
+                    src: img.src,
+                    element: img // Keep track of the element
+                };
+
+                // Highlight selected piece
+                img.style.borderColor = '#00f'; // Blue border for selected
+            });
+            piecesDiv.appendChild(img);
+            availablePieces.push({ index: index, element: img }); // Store for later manipulation
+        }
+         piecesDiv.style.display = 'flex'; // Ensure pieces are visible
+    }
+
+
+    function handleCanvasClick(event) {
+        if (gameState !== GameStates.PLAYING || !selectedPieceInfo) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const col = Math.floor(x / PIECE_SIZE);
+        const row = Math.floor(y / PIECE_SIZE);
+
+        // Check if click is within canvas bounds and grid cell
+        if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+
+        const targetCell = grid[row][col];
+        const pieceIndexToPlace = parseInt(selectedPieceInfo.index);
+
+        // --- Load image and place it ---
+        const img = new Image();
+        img.src = selectedPieceInfo.src;
+        img.onload = () => {
+            const newPiece = { img: img, index: pieceIndexToPlace };
+
+            // Check if the piece being placed is already on the board
+            let alreadyPlaced = false;
+            let oldRow, oldCol;
+            for (let r = 0; r < ROWS; r++) {
+                 for (let c = 0; c < COLS; c++) {
+                      if (grid[r][c] && grid[r][c].index === pieceIndexToPlace) {
+                            alreadyPlaced = true;
+                            oldRow = r;
+                            oldCol = c;
+                            break;
+                      }
+                 }
+                 if (alreadyPlaced) break;
+            }
+
+            // If the target cell is empty AND the piece wasn't already placed
+             if (!targetCell && !alreadyPlaced) {
+                grid[row][col] = newPiece;
+             }
+             // If the target cell is occupied OR the piece was already placed somewhere else
+             else {
+                  // Remove the piece from its old position if it was already placed
+                  if (alreadyPlaced) {
+                      grid[oldRow][oldCol] = null; // Clear old cell
+                  }
+
+                  // If the target cell had a piece, put it back in the pieces area
+                  if (targetCell) {
+                       // Find the corresponding img element and make it visible again
+                       const pieceElementToReturn = availablePieces.find(p => p.index === targetCell.index)?.element;
+                       if (pieceElementToReturn) {
+                           pieceElementToReturn.style.display = ''; // Show the piece again
+                       }
+                  }
+
+                  // Place the new piece in the target cell
+                  grid[row][col] = newPiece;
+             }
+
+
+            // Hide the selected piece from the available pieces div
+             selectedPieceInfo.element.style.display = 'none';
+
+            // Reset selection
+             selectedPieceInfo.element.style.borderColor = 'transparent';
+            selectedPieceInfo = null;
+
+            // Redraw and check for win
+            drawGame();
+
+            if (checkWin()) {
+                winner = currentPlayer;
+                // Update score (e.g., give the winner a point)
+                if (winner === 1) player1Score++;
+                else player2Score++;
+
+                gameState = GameStates.GAME_OVER;
+                winSound.play();
+                 if (RENDER_CANVAS) {
+                    drawGameOverScreen();
+                 } else {
+                     updateInfoDisplay(); // Update text for non-canvas version
+                 }
+            } else {
+                // Switch player
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                updateInfoDisplay();
+            }
+        };
+         img.onerror = () => {
+             console.error("Error loading image:", selectedPieceInfo.src);
+             // Handle image loading error if necessary
+         };
+    }
+
+     function handleScreenClick(event) {
+         if (gameState === GameStates.START && RENDER_CANVAS) {
+             const rect = canvas.getBoundingClientRect();
+             const x = event.clientX - rect.left;
+             const y = event.clientY - rect.top;
+
+             // Check if click is within Start Button bounds
+             const buttonX = CANVAS_WIDTH / 2 - 75;
+             const buttonY = CANVAS_HEIGHT / 2;
+             const buttonW = 150;
+             const buttonH = 50;
+             if (x >= buttonX && x <= buttonX + buttonW && y >= buttonY && y <= buttonY + buttonH) {
+                 startGame();
+             }
+         } else if (gameState === GameStates.GAME_OVER && RENDER_CANVAS) {
+             const rect = canvas.getBoundingClientRect();
+             const x = event.clientX - rect.left;
+             const y = event.clientY - rect.top;
+
+             // Check if click is within Play Again Button bounds
+             const buttonX = CANVAS_WIDTH / 2 - 80;
+             const buttonY = CANVAS_HEIGHT / 2 + 30;
+             const buttonW = 160;
+             const buttonH = 50;
+              if (x >= buttonX && x <= buttonX + buttonW && y >= buttonY && y <= buttonY + buttonH) {
+                  resetGame();
+              }
+         } else if (gameState === GameStates.PLAYING) {
+             handleCanvasClick(event); // Handle piece placement if playing
+         }
+     }
+
+    function startGame() {
+        gameState = GameStates.PLAYING;
+        currentPlayer = 1; // Player 1 starts
+        winner = null;
+        // Clear grid
+        for (let r = 0; r < ROWS; r++) {
+            grid[r].fill(null);
+        }
+        setupPieceImages(); // Create and show piece images
+        drawGame();         // Draw empty grid
+        updateInfoDisplay(); // Show Player 1's turn
+         if (RENDER_CANVAS) {
+             canvas.style.display = 'block'; // Ensure canvas is visible
+         } else {
+             canvas.style.display = 'none'; // Ensure canvas is hidden if not rendering
+         }
+         piecesDiv.style.display = 'flex'; // Ensure pieces div is visible
+    }
+
+    function resetGame() {
+        gameState = GameStates.START;
+         if (RENDER_CANVAS) {
+            drawStartScreen();
+         } else {
+             updateInfoDisplay(); // Update text for non-canvas version
+             document.getElementById('startButton').onclick = startGame; // Re-attach listener if needed
+             canvas.style.display = 'none';
+             piecesDiv.style.display = 'none';
+         }
+    }
+
+
+    // --- Initialization ---
+    function init() {
+        applyStyles(); // Apply JS styles first
+        canvas.addEventListener('click', handleScreenClick);
+        resetGame(); // Go to start screen initially
+    }
+
+    // --- Start the game ---
+    window.onload = init;
+
+  </script>
+</body>
+</html>
